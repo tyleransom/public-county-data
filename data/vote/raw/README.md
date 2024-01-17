@@ -1,0 +1,1 @@
+This data was obtained from "County Presidential Election Returns 2000-2020" on Harvard Dataverse, via the MIT Election Lab.

@@ -1,0 +1,105 @@
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\Admin\Dropbox\My PC (DESKTOP-9MD6Q97)\Documents\obesity-elevation\src\data-cleaning\watershed\create_fips_huc8.log
+  log type:  text
+ opened on:  30 Jan 2023, 15:05:51
+
+. 
+. global raw "../../../data/watershed/raw/"
+
+. global cln "../../../data/watershed/cleaned/"
+
+. 
+. * read in data
+. use ${raw}huc8_county, clear
+(Date-Site-Watershed-Level Nitrogen Data, 1950-2015)
+
+. 
+. * variable labels
+. lab var REG "Major Water Resource Region (MWRR)"
+
+. 
+. * clean FIPS codes
+. destring fips, replace force
+fips: all characters numeric; replaced as long
+
+. ren fips FIPS
+
+. bys FIPS: gen huc_number = _n
+
+. 
+. * get modal region, subregion, and access
+. bys FIPS (huc_number): egen modal_reg = mode(REG), maxmode
+
+. bys FIPS (huc_number): egen modal_sub = mode(SUB), maxmode
+
+. bys FIPS (huc_number): egen modal_acc = mode(ACC), maxmode
+
+. lab val modal_reg REG
+
+. lab val modal_sub SUB
+
+. lab val modal_acc ACC
+
+. drop REG SUB ACC
+
+. 
+. * create string variables and then convert those to numeric
+. decode modal_sub, gen(SUB)
+
+. decode modal_reg, gen(REG)
+
+. decode modal_acc, gen(ACC)
+
+. 
+. destring SUB, replace force
+SUB: all characters numeric; replaced as int
+
+. destring REG, replace force
+REG: all characters numeric; replaced as byte
+
+. destring ACC, replace force
+ACC: all characters numeric; replaced as long
+
+. 
+. * reshape wide to get unique FIPS
+. reshape wide HUC_CODE HUC_NAME CAT, i(FIPS REG SUB ACC) j(huc_number)
+(j = 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations           12,056   ->   2,934       
+Number of variables                  11   ->   73          
+j variable (22 values)       huc_number   ->   (dropped)
+xij variables:
+                               HUC_CODE   ->   HUC_CODE1 HUC_CODE2 ... HUC_CODE22
+                               HUC_NAME   ->   HUC_NAME1 HUC_NAME2 ... HUC_NAME22
+                                    CAT   ->   CAT1 CAT2 ... CAT22
+-----------------------------------------------------------------------------
+
+. order FIPS REG SUB ACC
+
+. 
+. isid FIPS
+
+. 
+. foreach var of varlist * {
+  2.     rename `var' `=strlower("`var'")'
+  3. }
+  (all newnames==oldnames)
+  (all newnames==oldnames)
+  (all newnames==oldnames)
+
+. 
+. save ${cln}fips_huc8_unique, replace
+file ../../../data/watershed/cleaned/fips_huc8_unique.dta saved
+
+. outsheet using ${cln}fips_watershed.csv, comma replace
+
+. 
+. log close
+      name:  <unnamed>
+       log:  C:\Users\Admin\Dropbox\My PC (DESKTOP-9MD6Q97)\Documents\obesity-elevation\src\data-cleaning\watershed\create_fips_huc8.log
+  log type:  text
+ closed on:  30 Jan 2023, 15:05:52
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

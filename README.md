@@ -1,2 +1,5 @@
-# public-county-data
-Various data on demographic, geographic, and economic variables for all US counties over a long time horizon
+Source code to produce data on county-level information about a variety of factors.
+
+Final output is placed in `data/county-combined/cleaned/`.
+
+`src/makefile` contains a series of bash commands to build the entire dataset

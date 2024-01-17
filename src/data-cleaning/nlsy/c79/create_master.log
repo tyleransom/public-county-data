@@ -1,0 +1,544 @@
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\Admin\Dropbox\My PC (DESKTOP-9MD6Q97)\Documents\obesity-elevation\src\data-cleaning\nlsy\c79\create_master.log
+  log type:  text
+ opened on:  30 Jan 2023, 14:30:32
+
+. 
+. set maxvar 32000
+
+
+. 
+. global afq "../../../../data/nlsy/raw/AFQT_MATCHING/"
+
+. global raw "../../../../data/nlsy/raw/c79/"
+
+. global imd "../../../../data/nlsy/intermediate/c79/"
+
+. global cln "../../../../data/nlsy/cleaned/c79/"
+
+. 
+. **************************************************
+. * Create all permanent variables and save all data
+. **************************************************
+. 
+. //! unzip -o ${imd}raw.dta.zip
+. use ${imd}raw.dta, clear
+
+. //! zip -u ${imd}raw.dta
+. 
+. xtset id year
+
+Panel variable: id (strongly balanced)
+ Time variable: year, 1988 to 2018, but with gaps
+         Delta: 1 unit
+
+. 
+. * Bring in data on CPI and minimum wage
+. run cpi_min_wage.do
+
+. 
+. * Create various demographic variables
+. do create_obesity.do
+
+. ***************************************************
+. * Generate various demographic variables
+. ***************************************************
+. 
+. * age
+. gener age = year-dob_yr-1
+
+. label var age "AGE AS OF JAN 1"
+
+. gener birthyr = dob_yr
+
+. 
+. * Fix heights so BMI is a valid measure
+. replace height = . if inrange(height,86.01,.)
+(9 real changes made, 9 to missing)
+
+. bys id (year): egen numHeightObs = count(height)
+
+. 
+. gen firstHeightYrA = year if !mi(height)
+(127,794 missing values generated)
+
+. bys id (year): egen firstHeightYr = min(firstHeightYrA)
+(46,864 missing values generated)
+
+. gen firstHeightA = height if year==firstHeightYr
+(176,104 missing values generated)
+
+. bys id (year): egen firstHeight = mean(firstHeightA)
+(46,864 missing values generated)
+
+. drop firstHeightA firstHeightYrA
+
+. 
+. gen lastHeightYrA = year if !mi(height)
+(127,794 missing values generated)
+
+. bys id (year): egen lastHeightYr = max(lastHeightYrA)
+(46,864 missing values generated)
+
+. gen lastHeightA = height if year==lastHeightYr
+(176,104 missing values generated)
+
+. bys id (year): egen lastHeight = mean(lastHeightA)
+(46,864 missing values generated)
+
+. drop lastHeightA lastHeightYrA
+
+. 
+. bys id (year): egen maxHeight = max(height)
+(46,864 missing values generated)
+
+. bys id (year): egen minHeight = min(height)
+(46,864 missing values generated)
+
+. gen heightFlag = (maxHeight - minHeight>6) & !mi(maxHeight) & !mi(minHeight)
+
+. 
+. gen heightTrend = (lastHeight - firstHeight)/(lastHeightYr - firstHeightYr)
+(50,944 missing values generated)
+
+. 
+. replace height = .  if numHeightObs<2
+(255 real changes made, 255 to missing)
+
+. replace height = 18 if height<18
+(1 real change made)
+
+. replace height = 84 if height>84 & !mi(height)
+(1 real change made)
+
+. 
+. * Interpolate missing heights:
+. bys id (year): ipolate height year, gen(heightSmooth)
+(119240 missing values generated)
+
+. bys id (year): ipolate height year, gen(heightSmoother) epolate
+(50944 missing values generated)
+
+. 
+. * Fix weights so BMI is a valid measure
+. replace weight = . if inrange(weight,500.01,.)
+(2 real changes made, 2 to missing)
+
+. 
+. * Interpolate missing heights:
+. bys id (year): ipolate weight year, gen(weightSmooth)
+(119214 missing values generated)
+
+. bys id (year): ipolate weight year, gen(weightSmoother) epolate
+(50855 missing values generated)
+
+. 
+. * create BMI measure (bmi =  weight (lb) / [height (in)]^2 x 703)
+. gen bmiA = weightSmooth/(heightSmooth^2)*703
+(119,571 missing values generated)
+
+. gen bmiB = weightSmoother/(heightSmoother^2)*703
+(51,240 missing values generated)
+
+. 
+. * bottom- and top-code BMIs at 18 and 40, respectively
+. replace bmiA = 40 if bmiA>40 & !mi(bmiA)
+(2,600 real changes made)
+
+. replace bmiA = 18 if bmiA<18 & !mi(bmiA)
+(1,461 real changes made)
+
+. replace bmiB = 40 if bmiB>40 & !mi(bmiB)
+(7,843 real changes made)
+
+. replace bmiB = 18 if bmiB<18 & !mi(bmiB)
+(30,634 real changes made)
+
+. 
+. gen overweight = inrange(bmiB,25.01,30) if !mi(bmiB)
+(51,240 missing values generated)
+
+. gen obese = inrange(bmiB,30.01,.)       if !mi(bmiB)
+(51,240 missing values generated)
+
+. gen ovrwgtObese = inrange(bmiB,25.01,.) if !mi(bmiB)
+(51,240 missing values generated)
+
+. ren bmiB bmi
+
+. 
+. * race
+. gen black    = race==2
+
+. gen hispanic = race==1
+
+. * gen white    = race==3 & inlist(1,ethPortuguese,ethEnglish,ethFrench,ethGerman,ethGreek,ethIrish,ethItalian,ethPolish,ethRussian,ethScottish,ethWelsh,ethAmerican)
+. * gen asian    = race==3 & inlist(1,ethFilipino,ethChinese,ethAsianIndian,ethJapanese,ethKorean,ethVietnamese)
+. * gen other    = race==3 & inlist(1,ethHawaiian,ethNativeAmerican,ethNone,ethOther)
+. * tab race if year==1994
+. * ren race race_screen
+. * gen race     = 1 if white
+. * replace race = 2 if black
+. * replace race = 3 if hispanic
+. * replace race = 4 if asian
+. * replace race = 5 if other | (~white & ~black & ~hispanic & ~asian)
+. * assert race != 0
+. * tab race if year==1994
+. * tab race race_screen if year==1994
+. * lab var white "WHITE"
+. * lab var black "BLACK"
+. * lab var hispanic "HISPANIC"
+. * lab var asian "ASIAN"
+. * lab var other "OTHER"
+. * lab var race "RACE"
+. * lab def vlrace 1 "White" 2 "Black" 3 "Hispanic" 4 "Asian" 5 "Other"
+. 
+. * female
+. gen female = sex==2
+
+. label var female "FEMALE"
+
+. 
+. * deflate family income
+. sort id year
+
+. by id: replace familyIncome = familyIncome/cpi
+(91,988 real changes made, 82,481 to missing)
+
+. replace familyIncome = 1 if familyIncome<=0
+(372 real changes made)
+
+. generat lnFamInc     = ln(familyIncome)
+(174,841 missing values generated)
+
+. replace familyIncome = familyIncome/1000
+(9,879 real changes made)
+
+. 
+. generat m_FamilyIncome=(familyIncome>=. | familyIncome==1)
+
+. replace familyIncome = 0 if m_FamilyIncome==1
+(174,841 real changes made)
+
+. replace lnFamInc     = 0 if m_FamilyIncome==1
+(174,841 real changes made)
+
+. lab var familyIncome   "FAMILY INCOME, 1000's of 1982-4 $"
+
+. lab var lnFamInc       "LOG FAMILY INCOME, 1982-4 $"
+
+. lab var m_FamilyIncome "MISSING FAMILY INCOME"
+
+. 
+. lab var birthyr "Year of birth"
+
+. 
+. * Highest grade completed
+. gen hgcRaw = highestGradeCompleted
+(157,250 missing values generated)
+
+. bys id (year): ipolate hgcRaw year, gen(hgc) epolate
+(70909 missing values generated)
+
+. 
+. gen grad4yr = (hgc>=16 & ~mi(hgc)) | (inrange(highestDegreeReceived,4,9))
+
+. gen ged     = highestDegreeReceived==1
+
+. gen gradHS  = (hgc>=12 & ~mi(hgc)) | (inrange(highestDegreeReceived,1,9))
+
+. 
+. replace gradHS  = . if weight==.m
+(92,941 real changes made, 92,941 to missing)
+
+. replace grad4yr = . if weight==.m
+(92,941 real changes made, 92,941 to missing)
+
+. 
+. lab var hgc     "Highest Grade Completed (years)"
+
+. lab var ged     "Holds a GED"
+
+. lab var gradHS  "Absorbing indicator for HS graduation (or GED)"
+
+. lab var grad4yr "Absorbing indicator for 4-year college graduation"
+
+. 
+. 
+. 
+. 
+. * Labor market variables: wages, occup., industry
+. egen wagemax = rowmax(Hrly_pay_job1_ Hrly_pay_job2_ Hrly_pay_job3_ Hrly_pay_job4_ Hrly_pay_job5_)
+(165,632 missing values generated)
+
+. gen  Main_job   = .
+(184,720 missing values generated)
+
+. forvalues X=5(-1)1 {
+  2.     replace Main_job = `X' if Hrly_pay_job`X'_==wagemax
+  3. }
+(165,695 real changes made)
+(165,923 real changes made)
+(166,747 real changes made)
+(170,083 real changes made)
+(179,300 real changes made)
+
+. ren wagemax wage
+
+. 
+. gen occJobMain = occupation_job1_
+(143,220 missing values generated)
+
+. gen indJobMain = industry_job1_
+(140,647 missing values generated)
+
+. forvalues X = 2/5 {
+  2.     replace occJobMain = occupation_job`X'_ if Main_job == `X'
+  3.     replace indJobMain = industry_job`X'_   if Main_job == `X'
+  4. }
+(3,710 real changes made, 207 to missing)
+(3,622 real changes made, 193 to missing)
+(852 real changes made, 36 to missing)
+(841 real changes made, 34 to missing)
+(214 real changes made, 13 to missing)
+(215 real changes made, 11 to missing)
+(46 real changes made, 3 to missing)
+(46 real changes made, 3 to missing)
+
+. 
+. gen occ90_3dig = occJobMain if inrange(year,1994,2001)
+(182,248 missing values generated)
+
+. gen occ00_3dig = occJobMain if inrange(year,2002,2002)
+(181,791 missing values generated)
+
+. gen occ00_4dig = occJobMain if inrange(year,2004,.)
+(148,438 missing values generated)
+
+. gen ind70_3dig = indJobMain if year==1994
+(184,345 missing values generated)
+
+. gen ind90_3dig = indJobMain if inrange(year,1996,2001)
+(180,469 missing values generated)
+
+. gen ind00_3dig = indJobMain if inrange(year,2002,2002)
+(181,789 missing values generated)
+
+. gen ind00_4dig = indJobMain if inrange(year,2004,.)
+(148,431 missing values generated)
+
+. 
+. lab var occ90_3dig "Occupation (3-digit), 1990 Census code"
+
+. lab var occ00_3dig "Occupation (3-digit), 2000 Census code"
+
+. lab var occ00_4dig "Occupation (4-digit), 2000 Census code"
+
+. lab var ind70_3dig "Occupation (3-digit), 1970 Census code"
+
+. lab var ind90_3dig "Occupation (3-digit), 1990 Census code"
+
+. lab var ind00_3dig "Occupation (3-digit), 2000 Census code"
+
+. lab var ind00_4dig "Occupation (4-digit), 2000 Census code"
+
+. 
+. replace wage = wage/cpi
+(126,984 real changes made, 107,907 to missing)
+
+. replace wage = wage/100
+(19,077 real changes made)
+
+. winsor2 wage, cuts(1 99) by(year)
+
+. ren wage wageraw
+
+. ren wage_w wage
+
+. sum wage
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+        wage |     19,088    4.496464    1.748247   1.226994   15.15152
+
+. 
+. 
+. 
+. 
+. 
+. *--------------------------------------------------------------------------------
+. * Health variables
+. *--------------------------------------------------------------------------------
+. * get extensive margin for fast food and sugary drink consumption
+. generat fastFoodEater = inrange(timesWeekEatFastFood,2,.)
+
+. generat sugaryDrinker = inrange(timesWeekDrinkSugary,2,.)
+
+. 
+. * ever smoke/drink/marijuana
+. bys id (year): egen ever_marijuana       = max(everUsedMarijuana)
+(57,456 missing values generated)
+
+. bys id (year): egen ever_cigarette       = max(everSmokedCigarette)
+(57,344 missing values generated)
+
+. bys id (year): egen ever_alcohol         = max(everDrunkAlcohol)
+(57,280 missing values generated)
+
+. 
+. 
+. gen missInt = weight==.m
+
+. 
+. ** Variables to keep:
+. global keeperdemog id year id_moth age birthyr height* weight* bmi overweight obese ovrwgtObese everDrunkAlcohol everSmokedCigarette everUsedMarijuana timesWeekEatFastFood time
+> sWeekDrinkSugary timesWeekEatFruit timesWeekEatVegetables timesWeekVigorousExercise timesWeekModerateExercise timesWeekMildExercise timesWeekStrengthExercise fastFoodEater suga
+> ryDrinker ever_marijuana ever_cigarette ever_alcohol missInt familyIncome lnFamInc m_FamilyIncome black hispanic race female hgc ged gradHS grad4yr ind??_?dig occ??_?dig wage
+
+. 
+end of do-file
+
+. 
+. * Variables to keep:
+. keep ${keeperdemog} 
+
+. 
+. xtsum id if year>=1994
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  600618.2   345144.8        201    1267501 |     N =  150085
+         between |             345158.6        201    1267501 |     n =   11545
+         within  |                    0   600618.2   600618.2 |     T =      13
+
+. drop if missInt
+(92,941 observations deleted)
+
+. xtsum id if year>=1994 & !missInt
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  545159.4   324935.4        201    1266703 |     N =   57144
+         between |               326496        201    1266703 |     n =    8623
+         within  |                    0   545159.4   545159.4 | T-bar = 6.62693
+
+. 
+. xtsum id if year>=1994
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  545159.4   324935.4        201    1266703 |     N =   57144
+         between |               326496        201    1266703 |     n =    8623
+         within  |                    0   545159.4   545159.4 | T-bar = 6.62693
+
+. xtsum id if year>=1994 & female
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  544971.6   320573.4        201    1266703 |     N =   28946
+         between |             322130.3        201    1266703 |     n =    4215
+         within  |                    0   544971.6   544971.6 | T-bar = 6.86738
+
+. xtsum id if year>=1994 & !female
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  545352.2   329358.6        401    1266702 |     N =   28198
+         between |             330644.9        401    1266702 |     n =    4408
+         within  |                    0   545352.2   545352.2 | T-bar = 6.39701
+
+. 
+. drop if mi(hgc)
+(17,663 observations deleted)
+
+. 
+. xtsum id if year>=1994 & !mi(hgc) 
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |    545804   324659.7        301    1266703 |     N =   52951
+         between |             326246.7        301    1266703 |     n =    7985
+         within  |                    0     545804     545804 | T-bar = 6.63131
+
+. xtsum id if year>=1994 & !mi(hgc) & female
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  545577.8   320119.4        301    1266703 |     N =   26954
+         between |             321195.2        301    1266703 |     n =    3890
+         within  |                    0   545577.8   545577.8 | T-bar = 6.92905
+
+. xtsum id if year>=1994 & !mi(hgc) & !female
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  546038.4   329307.1        401    1266702 |     N =   25997
+         between |             331010.8        401    1266702 |     n =    4095
+         within  |                    0   546038.4   546038.4 | T-bar = 6.34847
+
+. 
+. xtsum id if year>=1994 & !mi(hgc) & age==25
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  552739.8   322542.4        303    1266701 |     N =    2787
+         between |             322542.4        303    1266701 |     n =    2787
+         within  |                    0   552739.8   552739.8 |     T =       1
+
+. xtsum id if year>=1994 & !mi(hgc) & age==25 & female
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |  553038.1   318871.3        303    1256604 |     N =    1474
+         between |             318871.3        303    1256604 |     n =    1474
+         within  |                    0   553038.1   553038.1 |     T =       1
+
+. xtsum id if year>=1994 & !mi(hgc) & age==25 & !female
+
+Variable         |      Mean   Std. dev.       Min        Max |    Observations
+-----------------+--------------------------------------------+----------------
+id       overall |    552405   326735.9       1601    1266701 |     N =    1313
+         between |             326735.9       1601    1266701 |     n =    1313
+         within  |                    0     552405     552405 |     T =       1
+
+. 
+. compress
+  variable age was float now byte
+  variable birthyr was float now int
+  variable heightFlag was float now byte
+  variable overweight was float now byte
+  variable obese was float now byte
+  variable ovrwgtObese was float now byte
+  variable black was float now byte
+  variable hispanic was float now byte
+  variable female was float now byte
+  variable m_FamilyIncome was float now byte
+  variable grad4yr was float now byte
+  variable ged was float now byte
+  variable gradHS was float now byte
+  variable occ90_3dig was float now int
+  variable occ00_3dig was float now int
+  variable occ00_4dig was float now int
+  variable ind70_3dig was float now int
+  variable ind90_3dig was float now int
+  variable ind00_3dig was float now int
+  variable ind00_4dig was float now int
+  variable fastFoodEater was float now byte
+  variable sugaryDrinker was float now byte
+  variable ever_marijuana was float now byte
+  variable ever_cigarette was float now byte
+  variable ever_alcohol was float now byte
+  variable missInt was float now byte
+  (5,188,120 bytes saved)
+
+. save ${cln}master, replace
+file ../../../../data/nlsy/cleaned/c79/master.dta saved
+
+. //! zip -u ${cln}master.dta.zip master.dta
+. log close
+      name:  <unnamed>
+       log:  C:\Users\Admin\Dropbox\My PC (DESKTOP-9MD6Q97)\Documents\obesity-elevation\src\data-cleaning\nlsy\c79\create_master.log
+  log type:  text
+ closed on:  30 Jan 2023, 14:30:43
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

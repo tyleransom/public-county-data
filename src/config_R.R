@@ -1,0 +1,6 @@
+install.packages("tidyverse")
+install.packages("magrittr")
+install.packages("readxl")
+install.packages("haven")
+install.packages("zip")
+install.packages("imputeTS")
