@@ -3,38 +3,83 @@ library(magrittr)
 
 # load data
 allfips <- read_csv("https://raw.githubusercontent.com/kjhealy/us-county/master/data/census/fips-by-state.csv")
-OG <- read_csv("../../../data/oil-and-gas/raw/Oil_and_Natural_Gas_Wells.csv")
+oil <- read_csv("../../../data/oil-and-gas/raw/Oil_Wells.csv")
+gas <- read_csv("../../../data/oil-and-gas/raw/Natural_Gas_Wells.csv")
 
-# clean up date variable
-OG %<>% mutate(COMPDATE = as.Date(OG$COMPDATE, format =  "%Y/%m/%d %H:%M:%S"))
-OG %<>% mutate(YEAR     = as.numeric(format(OG$COMPDATE,format='%Y')))
+# clean up county data
+allfips_clean <- allfips %>%
+                 mutate(
+                   county = str_remove(name, "\\s+County$"),
+                   county = str_remove(county, "\\s+Parish$"),
+                   county = str_remove(county, "\\s+Borough$"),
+                   county = str_remove(county, "\\s+Municipality$"),
+                   county = str_remove(county, "\\s+Census Area$"),
+                   state  = state,
+                   county = str_to_lower(county),
+                   county = str_replace(county, "st\\.", "st")
+                 )
 
 # reduce number of variables
-OG_sliced <- OG %>% select(COUNTYFIPS, YEAR)
+oil_sliced <- oil %>% select(countynm, state) %>% mutate(id = paste(countynm, state, sep="_"))
+gas_sliced <- gas %>% select(countynm, state) %>% mutate(id = paste(countynm, state, sep="_")) 
 
-# count number of wells per year
-OG_sliced %<>% count(COUNTYFIPS, YEAR)
+# drop missing states
+oil_sliced <- oil_sliced %>% drop_na(state)
+gas_sliced <- gas_sliced %>% drop_na(state)
 
-# rename 
-OG_sliced %<>% rename(FIPS = COUNTYFIPS, year = YEAR, n_new_og_wells = n)
+# count number of wells in each county and state
+oil_sliced %<>% count(id) %>% rename(n_oil_wells = n)
+gas_sliced %<>% count(id) %>% rename(n_gas_wells = n)
 
-# create "cumulative number of mines"
+# get county fips codes for oil and gas wells
+oil_sliced_clean <- oil_sliced %>%
+  separate(id, into = c("county", "state"), sep = "_", remove = FALSE) %>%
+  mutate(
+    county = str_to_lower(county),
+    county = str_replace(county, "st\\.", "st"),
+    county = str_replace(county, "\\s+County$", "")
+  ) %>%
+  filter(!(state %in% c("FP", "FG")))
+
+gas_sliced_clean <- gas_sliced %>%
+  separate(id, into = c("county", "state"), sep = "_", remove = FALSE) %>%
+  mutate(
+    county = str_to_lower(county),
+    county = str_replace(county, "st\\.", "st"),
+    county = str_replace(county, "\\s+County$", "")
+  ) %>%
+  filter(!(state %in% c("FP", "FG")))
+
+# Join the datasets with county fips codes
+oil_sliced_clean %<>%
+  left_join(allfips_clean, by = c("county", "state")) %>%
+  select(FIPS = fips, n_oil_wells)
+gas_sliced_clean %<>%
+  left_join(allfips_clean, by = c("county", "state")) %>%
+  select(FIPS = fips, n_gas_wells)
+
+# Check for unmatched rows
+unmatched <- oil_sliced_clean %>%
+  filter(is.na(FIPS))
+print(unmatched)
+unmatched <- gas_sliced_clean %>%
+  filter(is.na(FIPS))
+print(unmatched)
+
+# missing rows need to be included as having 0 wells
 fips <- allfips$fips
-years <- 1900:2022
-template <- expand_grid(FIPS = fips, year = years)
+template <- expand_grid(FIPS = fips)
 
 # Merge template with original data
-OG_all <- left_join(template, OG_sliced, by = c("FIPS", "year"))
+oil_all <- left_join(template, oil_sliced_clean, by = c("FIPS"))
+gas_all <- left_join(template, gas_sliced_clean, by = c("FIPS"))
 
 # Replace missing values with 0
-OG_all %<>% replace_na(list(n_new_og_wells = 0))
+oil_all %<>% replace_na(list(n_oil_wells = 0))
+gas_all %<>% replace_na(list(n_gas_wells = 0))
 
-# Number of mines
-OG_all %<>% group_by(FIPS) %>%
-  mutate(n_og_wells = cumsum(n_new_og_wells)) %>%
-  ungroup
-
-OG_all %<>% filter(year>=1970)
+# Merge together
+OG_all <- left_join(oil_all, gas_all, by = c("FIPS"))
 
 # save as CSV
-write_csv(OG_all,"../../../data/oil-and-gas/cleaned/OG_count.csv")
+write_csv(OG_all, "../../../data/oil-and-gas/cleaned/OG_count.csv")

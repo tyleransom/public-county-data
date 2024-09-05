@@ -16,14 +16,14 @@ health       <- read_csv("../../../data/health/cleaned/health.csv")
 qcew         <- read_csv("../../../data/qcew/cleaned/employment_1990_2021.csv")
 temperature  <- read_csv("../../../data/temperature/cleaned/temperature2000-2019.csv")
 vote         <- read_csv("../../../data/vote/cleaned/dem_vote_shr.csv")
-watershed    <- read_csv("../../../data/watershed/cleaned/fips_watershed.csv")
+watershed    <- read_csv("../../../data/watershed/cleaned/fips_HUC2.csv")
 adjacency    <- read_csv("../../../data/county-adjacency/cleaned/adjacent_counties.csv")
 
 #-------------------------------------------------------------------------------
 # Convert the "by" variables to numeric
 #-------------------------------------------------------------------------------
-mines        %<>% mutate(across(c("FIPS", "year"), as.numeric))
-oil_gas      %<>% mutate(across(c("FIPS", "year"), as.numeric))
+mines        %<>% mutate(across(c("FIPS"), as.numeric))
+oil_gas      %<>% mutate(across(c("FIPS"), as.numeric))
 census       %<>% rename(FIPS = GEOID) %>%
                   mutate(across(c("FIPS", "year"), as.numeric))
 coastline    %<>% mutate(FIPS = as.numeric(FIPS))
@@ -45,15 +45,15 @@ qcew         %<>% rename(FIPS = area_fips) %>%
 temperature  %<>% rename(FIPS = fips) %>%
                   mutate(across(c("FIPS", "year"), as.numeric))
 vote         %<>% mutate(FIPS = as.numeric(FIPS))
-watershed    %<>% rename(FIPS = fips) %>%
-                  mutate(FIPS = as.numeric(FIPS))
+watershed    %<>% mutate(FIPS = as.numeric(FIPS)) %>%
+                  select(-cntyname, -stabb, -stname)
 adjacency    %<>% mutate(focalFIPS    = as.numeric(focalFIPS),
                          adjacentFIPS = as.numeric(adjacentFIPS))
 
 #-------------------------------------------------------------------------------
 # Merge the CSV files based on their identifiers
 #-------------------------------------------------------------------------------
-df <- mines %>% left_join(oil_gas, by = c("FIPS", "year")) 
+df <- mines %>% left_join(oil_gas, by = c("FIPS")) 
 df %>% `$`(FIPS) %>% unique %>% length %>% paste0("number of unique counties: ",.) %>% print
 df %>% `$`(year) %>% unique %>% length %>% paste0("number of unique years: "   ,.) %>% print
 
@@ -104,7 +104,7 @@ df %<>% mutate(coastal = !is.na(coast)) %>%
 #-------------------------------------------------------------------------------
 df %<>% filter(year>=1970) %>%
         select(-County,-State,-NAME,-mean_lat,-mean_lon) %>%
-        relocate(FIPS,year,cntyname,stabb,obesity_rate,coast,coastal,elev,elevpc,modal_reg,modal_sub,modal_acc) %>%
+        relocate(FIPS,year,cntyname,stabb,obesity_rate,coast,coastal,elev,elevpc) %>%
         rename(longitude = long, latitude = lat)
 
 
@@ -131,11 +131,13 @@ df <- left_join(df, dfadjm, by=c("FIPS","year"))
 #-------------------------------------------------------------------------------
 # Save the merged data as a CSV file
 #-------------------------------------------------------------------------------
-write_csv(df, "../../../data/county-combined/cleaned/county_all.csv")
-zip("../../../data/county-combined/cleaned/county_all.csv.zip", files = "../../../data/county-combined/cleaned/county_all.csv")
-unlink("../../../data/county-combined/cleaned/county_all.csv")
+setwd("../../../data/county-combined/cleaned/")
+write_csv(df, "county_all.csv")
+zip("county_all.csv.zip", files = "county_all.csv")
+unlink("county_all.csv")
 
 # Save as a DTA file
-write_dta(df, "../../../data/county-combined/cleaned/county_all.dta")
-zip("../../../data/county-combined/cleaned/county_all.dta.zip", files = "../../../data/county-combined/cleaned/county_all.dta")
-unlink("../../../data/county-combined/cleaned/county_all.dta")
+write_dta(df, "county_all.dta")
+zip("county_all.dta.zip", files = "county_all.dta")
+unlink("county_all.dta")
+setwd("../../../src/data-cleaning/county-combined/")
